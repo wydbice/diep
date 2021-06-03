@@ -1,151 +1,4 @@
-<!DOCTYPE html>
-<html>
-<!--
-Diep-Clone: An Open-Source Clone of Diep.io
-Copyright (C) 2017  Nebula
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
--->
-	<head>
-		<meta charset="utf-8">
-    <link rel="stylesheet" type="text/css" href="index.css">
-  </head>
-  <script src="/socket.io/socket.io.js"></script>
-  <body>
-    <div id="display">
-      <canvas id="game_canvas"></canvas>
-    </div>
-    <script>
-      window.devicePixelRatio || (window.devicePixelRatio = 1);
-      function findFirstPositive(b, a, i, c) {
-        c=(d,e)=>e>=d?(a=d+(e-d)/2,0<b(a)&&(a==d||0>=b(a-1))?a:0>=b(a)?c(a+1,e):c(d,a-1)):-1;
-        for (i = 1; 0 >= b(i);) i *= 2;
-        return c(i / 2, i)|0;
-      }
-      window.config = {
-        unitsPerGridLine: 32,
-        gridWidth: 0.5,
-        isRetina: false
-      };
-      config.dpi = findFirstPositive(x => matchMedia(`(max-resolution: ${x}dpi)`).matches);
-      if (window.configOverride !== null && typeof window.configOverride === 'object'){
-        window.configOverride.keys.forEach((k) => {
-          window.config[k] = window.configOverride[k];
-        });
-      }
-    </script>
-    <script>
-console.info(`Diep-Clone  Copyright (C) 2017  Nebula
-This program comes with ABSOLUTELY NO WARRANTY.
-This is free software, and you are welcome to redistribute it
-under certain conditions.`);
-console.info(`This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.`);
-console.info(`This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.`);
-console.info(`For the full license, please type "license()" into the console.`);
-      var socket = io();
-      window.gridReady = false;
-      /* GAME STATES
-        -1: GAME ERROR
-        0: NOT CONNECTED
-        1: CONNECTED, NOT SPAWNED
-        2: UPDATE IN PROGRESS
-        3: SPAWNING
-        4: SPAWNED
-        5: DEATH SCREEN
-      */
-      var gameState = 0;
-      var keys = {};
-      var canvas = document.getElementById('game_canvas');
-      var display = document.getElementById('display');
-      function resizeDisplay(){
-        window.gridReady = false;
-        display.style.width = window.innerWidth + 'px';
-        display.style.height = window.innerHeight + 'px';
-        display.style.marginLeft = (-window.innerWidth / 2) + 'px';
-        display.style.marginTop = (-window.innerHeight / 2) + 'px';
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        var gridSVG = `<svg width="${window.innerWidth + config.unitsPerGridLine * 2}px" height="${window.innerHeight + config.unitsPerGridLine * 2}px" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-            <pattern id="smallGrid" width="${config.unitsPerGridLine / (window.devicePixelRatio * 96 / config.dpi)}" height="${config.unitsPerGridLine / (window.devicePixelRatio * 96 / config.dpi)}" patternUnits="userSpaceOnUse">
-                <path d="M ${config.unitsPerGridLine / (window.devicePixelRatio * 96 / config.dpi)} 0 L 0 0 0 ${config.unitsPerGridLine / (window.devicePixelRatio * 96 / config.dpi)}" fill="none" stroke="#555555" stroke-width="${config.gridWidth / window.devicePixelRatio}" />
-            </pattern>
-        </defs>
-        <rect width="${window.innerWidth + config.unitsPerGridLine * 2}px" height="${window.innerHeight + config.unitsPerGridLine * 2}px" fill="url(#smallGrid)" />
-    </svg>`;
-        var DOMURL = window.URL || window.webkitURL || window;
-        var img = new Image();
-        var svg = new Blob([gridSVG], {type: 'image/svg+xml;charset=utf-8'});
-        var url = DOMURL.createObjectURL(svg);
-        img.onload = function(){
-          window.grid = img;
-          window.gridReady = true;
-        }
-        img.src = url;
-      }
-      resizeDisplay();
-      window.x = 0;
-      window.y = 0;
-      window.input = {};
-      window.input.mouseX = 0;
-      window.input.mouseY = 0;
-      window.addEventListener('resize', resizeDisplay, false);
-      window.addEventListener('orientationchange', resizeDisplay, false);
-      var ctx = canvas.getContext('2d');
-      canvas.addEventListener('mousemove', function(e) {
-        window.input.mouseX = e.clientX;
-        window.input.mouseY = e.clientY;
-      }, false);
-      socket.on('connect', () => {
-        function updateCanvas(){
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          if (window.gridReady){
-            window.x = window.input.mouseX % config.unitsPerGridLine;
-            window.y = window.input.mouseY % config.unitsPerGridLine;
-            ctx.drawImage(window.grid, window.x - config.unitsPerGridLine, window.y - config.unitsPerGridLine);
-          }
-          if (gameState == 4){
-            socket.userInputInterval = setInterval(() => {
-              socket.emit('user_input', keys);
-            }, 50);
-          }
-        }
-        setInterval(updateCanvas, 50);
-        socket.heartbeatInterval = setInterval(() => {
-          socket.emit('heartbeat', {time: Date.now()});
-        }, 2500);
-        socket.on('heartbeat', (data) => {
-          socket.latency = Date.now() - data.time;
-          console.log('Latency: ' + socket.latency + 'ms');
-        });
-      });
-      window.addEventListener('keydown', (e) => {
-        keys[e.keyCode.toString()] = true;
-      });
-      window.addEventListener('keyup', (e) => {
-        keys[e.keyCode.toString()] = false;
-      });
-    </script>
-    <script>
-      window.license = function(){
-console.info(`GNU GENERAL PUBLIC LICENSE
+GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 
  Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>
@@ -800,11 +653,11 @@ Also add information on how to contact you by electronic and paper mail.
 notice like this when it starts in an interactive mode:
 
     Diep-Clone  Copyright (C) 2017  Nebula
-    This program comes with ABSOLUTELY NO WARRANTY; for details type \`show w'.
+    This program comes with ABSOLUTELY NO WARRANTY; for details type `show w'.
     This is free software, and you are welcome to redistribute it
-    under certain conditions; type \`show c' for details.
+    under certain conditions; type `show c' for details.
 
-The hypothetical commands \`show w' and \`show c' should show the appropriate
+The hypothetical commands `show w' and `show c' should show the appropriate
 parts of the General Public License.  Of course, your program's commands
 might be different; for a GUI interface, you would use an "about box".
 
@@ -818,8 +671,4 @@ into proprietary programs.  If your program is a subroutine library, you
 may consider it more useful to permit linking proprietary applications with
 the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
-<http://www.gnu.org/philosophy/why-not-lgpl.html>.`);
-};
-</script>
-</body>
-</html>
+<http://www.gnu.org/philosophy/why-not-lgpl.html>.
